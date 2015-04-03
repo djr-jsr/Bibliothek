@@ -5,8 +5,12 @@
  */
 package bibliothek;
 
+import java.io.ByteArrayInputStream;
+import java.io.IOException;
+import java.io.ObjectInputStream;
 import java.sql.Connection;
 import java.sql.DriverManager;
+import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
@@ -24,13 +28,12 @@ import java.util.logging.Logger;
  */
 public class LibrarySystem {
 
-    private static final String url = "jdbc:mysql://10.136.158.28:3306/library";
+    private static final String url = "jdbc:mysql://10.109.52.217:3306/library";
     private static final String user = "root";
     private static final String password = "qwerty";
 
     //private static ArrayList<Book> bookList;
     //private static ArrayList<Member> memberList;
-
     public void statistics() {
 
     }
@@ -47,7 +50,7 @@ public class LibrarySystem {
 
     }
 
-    public void issue(String ISBN, int ID) {
+    public void issue(String ISBN, int ID) throws IOException, ClassNotFoundException {
         try {
             int flag = 0;
             Statement stmt = null;
@@ -59,15 +62,22 @@ public class LibrarySystem {
             rs.next();
             boolean isReserved = rs.getBoolean("isReserved");
             int onShelf = rs.getInt("onShelf");
-            ArrayList<SubBook> copyDetails = (ArrayList<SubBook>) rs.getBlob("copyDetails");
-            ArrayList<Integer> reserveList = (ArrayList<Integer>) rs.getBlob("reserveList");
+            byte[] buf = rs.getBytes("copyDetails");
+            ObjectInputStream o = new ObjectInputStream(new ByteArrayInputStream(buf));
+            ArrayList<SubBook> copyDetails = (ArrayList<SubBook>) o.readObject();
+
+            byte[] buf1 = rs.getBytes("reserveList");
+            ObjectInputStream o1 = new ObjectInputStream(new ByteArrayInputStream(buf1));
+            ArrayList<Integer> reserveList = (ArrayList<Integer>) o1.readObject();
 
             String mem = "SELECT * FROM members WHERE ID = " + ID;
             ResultSet ms = stmt.executeQuery(mem);
             ms.next();
             double fine = ms.getDouble("fine");
             int bookLimit = ms.getInt("bookLimit");
-            ArrayList<IssueDetails_member> booksIssued = (ArrayList<IssueDetails_member>) ms.getBlob("booksIssued");
+            byte[] buf2 = ms.getBytes("booksIssued");
+            ObjectInputStream o2 = new ObjectInputStream(new ByteArrayInputStream(buf2));
+            ArrayList<IssueDetails_member> booksIssued = (ArrayList<IssueDetails_member>) o2.readObject();
 
             //if fine is not paid or max books issued
             if (fine > 0 || booksIssued.size() >= bookLimit) {
@@ -102,20 +112,19 @@ public class LibrarySystem {
             boolean member_exists = false;
             if (isReserved == true && onShelf > 0) {
                 Iterator iter = reserveList.iterator();
-                while(iter.hasNext())
-                {
+                while (iter.hasNext()) {
                     int x = (int) iter.next();
-                    if(x == ID)
-                    {
+                    if (x == ID) {
                         member_exists = true;
                         iter.remove();
                         break;
                     }
                 }
-                 
-                if(!member_exists)
+
+                if (!member_exists) {
                     return;
-                
+                }
+
                 Iterator itr = copyDetails.iterator();
                 while (itr.hasNext()) {
                     SubBook sb = (SubBook) itr.next();
@@ -129,8 +138,9 @@ public class LibrarySystem {
                         IssueDetails_book temp = new IssueDetails_book(ID, date);
                         issuedMembers.add(temp);
                         sb.setIssuedMembers(issuedMembers);
-                        if(reserveList.isEmpty())
+                        if (reserveList.isEmpty()) {
                             isReserved = false;
+                        }
 
                         IssueDetails_member memtemp = new IssueDetails_member(ISBN, date);
                         booksIssued.add(memtemp);
@@ -139,18 +149,26 @@ public class LibrarySystem {
                     }
                 }
             }
+            
+            add = "UPDATE books SET reserveList = " + "?"
+                    + ", isReserved = " + isReserved
+                    + ", copyDetails = " + "?"
+                    + ", onShelf = " + onShelf
+                    + " WHERE ISBN = '" + ISBN + "'";
+            PreparedStatement pstmt = con.prepareStatement(add);
+            pstmt.setObject(1, reserveList);
+            pstmt.setObject(2, copyDetails);
+            pstmt.executeUpdate();
+            //stmt.executeUpdate(add);
+
+            mem = "UPDATE members SET booksIssued = " + "?" + " WHERE ID = " + ID;
+            pstmt = con.prepareStatement(mem);
+            pstmt.setObject(1, booksIssued);
+            pstmt.executeUpdate();
+            //stmt.executeUpdate(mem);
+            System.out.println("Book Issued!!");
             rs.close();
             ms.close();
-            add = "UPDATE books SET reserveList = '" + reserveList 
-                    + "', isReserved = " + isReserved
-                    + ", copyDetails = '" + copyDetails
-                    + "', onShelf = " + onShelf
-                    + " WHERE ISBN = '" + ISBN + "'";
-            stmt.executeUpdate(add);
-            
-            mem = "UPDATE members SET booksIssued = '" + booksIssued + "' WHERE ID = " + ID;
-            stmt.executeUpdate(mem);
-            System.out.println("Book Issued!!");
         } catch (SQLException ex) {
             Logger.getLogger(Librarian.class.getName()).log(Level.SEVERE, null, ex);
         }
@@ -161,7 +179,7 @@ public class LibrarySystem {
 
     }
 
-    public void reserve(String ISBN, int ID) {
+    public void reserve(String ISBN, int ID) throws IOException, ClassNotFoundException {
         try {
             int flag = 0;
             Statement stmt = null;
@@ -173,7 +191,9 @@ public class LibrarySystem {
             rs.next();
             boolean isReserved = rs.getBoolean("isReserved");
             isReserved = true;
-            ArrayList<Integer> reserveList = (ArrayList<Integer>) rs.getBlob("reserveList");
+            byte[] buf = rs.getBytes("booksIssued");
+            ObjectInputStream o = new ObjectInputStream(new ByteArrayInputStream(buf));
+            ArrayList<Integer> reserveList = (ArrayList<Integer>) o.readObject();
             Iterator itr = reserveList.iterator();
             while (itr.hasNext()) {
                 int sb = (int) itr.next();
@@ -186,10 +206,13 @@ public class LibrarySystem {
                 reserveList.add(ID);
             }
             rs.close();
-            add = "UPDATE books SET reserveList = '" + reserveList 
-                    + "', isReserved = " + isReserved 
+            add = "UPDATE books SET reserveList = " + "?"
+                    + ", isReserved = " + isReserved
                     + " WHERE ISBN = '" + ISBN + "'";
-            stmt.executeUpdate(add);
+            PreparedStatement pstmt = con.prepareStatement(add);
+            pstmt.setObject(1, reserveList);
+            pstmt.executeUpdate();
+            //stmt.executeUpdate(add);
             System.out.println("Book Reserved!!");
         } catch (SQLException ex) {
             Logger.getLogger(Librarian.class.getName()).log(Level.SEVERE, null, ex);

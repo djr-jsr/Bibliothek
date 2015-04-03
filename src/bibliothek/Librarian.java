@@ -5,8 +5,12 @@
  */
 package bibliothek;
 
+import java.io.ByteArrayInputStream;
+import java.io.IOException;
+import java.io.ObjectInputStream;
 import java.sql.Connection;
 import java.sql.DriverManager;
+import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
@@ -21,14 +25,14 @@ import java.util.logging.Logger;
  */
 public class Librarian {
 
-    private static final String url = "jdbc:mysql://10.136.158.28:3306/library";
+    private static final String url = "jdbc:mysql://10.109.52.217:3306/library";
     private static final String user = "root";
     private static final String password = "qwerty";
-
 
     // TODO :  Modify records
     public void create_record(type memberType, int ID, String name, String phoneNo, String address) {
         //mbr = new Member(memberType, ID, name, phoneNo, address);
+        ArrayList<IssueDetails_member> issue_member = new ArrayList<>();
         int bookLimit = 0;
         int duration = 0;
         if (memberType == type.underGraduate) {
@@ -49,9 +53,10 @@ public class Librarian {
 
             Connection con = DriverManager.getConnection(url, user, password);
             System.out.println("Success");
-            stmt = con.createStatement();
-            String add = "INSERT into members VALUES ("
-                    + memberType + ", "
+            //stmt = con.createStatement();
+            System.out.println("Hello");
+            String add = "INSERT into members VALUES ('"
+                    + memberType.toString() + "', "
                     + ID + ", '"
                     + name + "', '"
                     + phoneNo + "', '"
@@ -59,8 +64,11 @@ public class Librarian {
                     + 0.0 + ", "
                     + bookLimit + ", "
                     + duration + ", "
-                    + null + ")";
-            stmt.executeUpdate(add);
+                    + "?" + ")";
+            PreparedStatement pstmt = con.prepareStatement(add);
+            pstmt.setObject(1, issue_member);
+            pstmt.executeUpdate();
+            //stmt.executeUpdate(add);
             System.out.println("Member Added!!");
         } catch (SQLException ex) {
             Logger.getLogger(Librarian.class.getName()).log(Level.SEVERE, null, ex);
@@ -68,16 +76,36 @@ public class Librarian {
 
     }
 
-    public void delete_record(int ID) {
+    public void delete_record(int ID) throws IOException, ClassNotFoundException {
         try {
             Statement stmt = null;
-
+            boolean flag = false;
             Connection con = DriverManager.getConnection(url, user, password);
             System.out.println("Success");
+
             stmt = con.createStatement();
-            String add = "DELETE from members WHERE ID = " + ID;
-            stmt.executeUpdate(add);
-            System.out.println("Member Deleted!!");
+            String add = "SELECT * FROM members WHERE ID = " + ID;
+            ResultSet rs = stmt.executeQuery(add);
+            rs.next();
+            byte[] buf = rs.getBytes("booksIssued");
+            ObjectInputStream o = new ObjectInputStream(new ByteArrayInputStream(buf));
+
+            ArrayList<IssueDetails_member> bookIssued = (ArrayList<IssueDetails_member>) o.readObject();
+            Iterator itr = bookIssued.iterator();
+            while (itr.hasNext()) {
+                IssueDetails_member mem = (IssueDetails_member) itr.next();
+                if (mem.getReturnDate().equalsIgnoreCase("")) {
+                    flag = true;
+                }
+            }
+            if (!flag) {
+                add = "DELETE from members WHERE ID = " + ID;
+                stmt.executeUpdate(add);
+                System.out.println("Member Deleted!!");
+            }
+            else{
+                System.out.println("Member can't be deleted!!");
+            }
         } catch (SQLException ex) {
             Logger.getLogger(Librarian.class.getName()).log(Level.SEVERE, null, ex);
         }
@@ -85,6 +113,7 @@ public class Librarian {
 
     public void create_book(String ISBN, String name, String publisher, int yearOfPurchase, int rackNo, double price, int copies) {
         ArrayList<SubBook> copyDetails = new ArrayList<>();
+        ArrayList<Integer> reserveList = new ArrayList<>();
         for (int i = 0; i < copies; i++) {
             SubBook newCopy = new SubBook(i + 1, false);
             copyDetails.add(newCopy);
@@ -105,10 +134,14 @@ public class Librarian {
                     + copies + ", "
                     + (copies + 1) + ", "
                     + price + ", "
-                    + false + ", '"
-                    + copyDetails + "', "
-                    + null + ")";
-            stmt.executeUpdate(add);
+                    + false + ", "
+                    + "?" + ", "
+                    + "?" + ")";
+            PreparedStatement statement = con.prepareStatement(add);
+            statement.setObject(1, copyDetails);
+            statement.setObject(2, reserveList);
+            statement.executeUpdate();
+            //stmt.executeUpdate(add);
             System.out.println("Book Added!!");
 
         } catch (SQLException ex) {
@@ -117,22 +150,7 @@ public class Librarian {
 
     }
 
-    public void delete_book(String ISBN) {
-        try {
-            Statement stmt = null;
-
-            Connection con = DriverManager.getConnection(url, user, password);
-            System.out.println("Success");
-            stmt = con.createStatement();
-            String add = "DELETE from books WHERE ISBN = '" + ISBN + "'";
-            stmt.executeUpdate(add);
-            System.out.println("Book Deleted!!");
-        } catch (SQLException ex) {
-            Logger.getLogger(Librarian.class.getName()).log(Level.SEVERE, null, ex);
-        }
-    }
-
-    public void create_subBook(String ISBN, int copies) {
+    public void delete_book(String ISBN) throws IOException, ClassNotFoundException {
         try {
             Statement stmt = null;
 
@@ -142,24 +160,64 @@ public class Librarian {
             String add = "SELECT * FROM books WHERE ISBN = '" + ISBN + "'";
             ResultSet rs = stmt.executeQuery(add);
             rs.next();
-            ArrayList<SubBook> copyDetails = (ArrayList<SubBook>) rs.getBlob("copyDetails");
+            int onShelf = rs.getInt("onShelf");
+            byte[] buf = rs.getBytes("copyDetails");
+            ObjectInputStream o = new ObjectInputStream(new ByteArrayInputStream(buf));
+
+            ArrayList<SubBook> copyDetails = (ArrayList<SubBook>) o.readObject();
+            if (onShelf == copyDetails.size()) {
+                add = "DELETE from books WHERE ISBN = '" + ISBN + "'";
+                stmt.executeUpdate(add);
+                System.out.println("Book Deleted!!");
+            }
+
+        } catch (SQLException ex) {
+            Logger.getLogger(Librarian.class.getName()).log(Level.SEVERE, null, ex);
+        }
+    }
+
+    public void create_subBook(String ISBN, int copies) throws IOException, ClassNotFoundException {
+        try {
+            Statement stmt = null;
+
+            Connection con = DriverManager.getConnection(url, user, password);
+            System.out.println("Success");
+            stmt = con.createStatement();
+            String add = "SELECT * FROM books WHERE ISBN = '" + ISBN + "'";
+            ResultSet rs = stmt.executeQuery(add);
+            rs.next();
+            int onShelf = rs.getInt("onShelf");
+            byte[] buf = rs.getBytes("copyDetails");
+            ObjectInputStream o = new ObjectInputStream(new ByteArrayInputStream(buf));
+
+            ArrayList<SubBook> copyDetails = (ArrayList<SubBook>) o.readObject();
+            System.out.println(onShelf);
+
             int countID = rs.getInt("countID");
             for (int i = 0; i < copies; i++) {
                 SubBook newCopy = new SubBook(countID + i, false);
                 copyDetails.add(newCopy);
             }
             countID = countID + copies;
+            onShelf = onShelf + copies;
             rs.close();
-            add = "UPDATE books SET countID = " + countID + ", copyDetails = '" + copyDetails + "' WHERE ISBN = '" + ISBN + "'";
-            stmt.executeUpdate(add);
+            add = "UPDATE books SET countID = " + countID
+                    + ", copyDetails = " + "?"
+                    + ", onShelf = " + onShelf
+                    + " WHERE ISBN = '" + ISBN + "'";
+            PreparedStatement statement = con.prepareStatement(add);
+            statement.setObject(1, copyDetails);
+            statement.executeUpdate();
+            //stmt.executeUpdate(add);
             System.out.println("SUBBook Created!!");
         } catch (SQLException ex) {
             Logger.getLogger(Librarian.class.getName()).log(Level.SEVERE, null, ex);
         }
     }
 
-    public void delete_subBook(String ISBN, int ID) {
+    public void delete_subBook(String ISBN, int ID) throws IOException, ClassNotFoundException {
         try {
+            boolean flag = false;
             Statement stmt = null;
             Connection con = DriverManager.getConnection(url, user, password);
             System.out.println("Success");
@@ -167,20 +225,35 @@ public class Librarian {
             String add = "SELECT * FROM books WHERE ISBN = '" + ISBN + "'";
             ResultSet rs = stmt.executeQuery(add);
             rs.next();
-            ArrayList<SubBook> copyDetails = (ArrayList<SubBook>) rs.getBlob("copyDetails");
+            int onShelf = rs.getInt("onShelf");
+            byte[] buf = rs.getBytes("copyDetails");
+            ObjectInputStream o = new ObjectInputStream(new ByteArrayInputStream(buf));
+
+            ArrayList<SubBook> copyDetails = (ArrayList<SubBook>) o.readObject();
             Iterator itr = copyDetails.iterator();
             while (itr.hasNext()) {
                 SubBook sb = (SubBook) itr.next();
-                if (sb.getID() == ID) {
+                if (sb.getID() == ID && sb.isIsIssued() == false) {
+                    onShelf--;
+                    flag = true;
                     itr.remove();
                     break;
                 }
             }
 
             rs.close();
-            add = "UPDATE books SET copyDetails = '" + copyDetails + "' WHERE ISBN = '" + ISBN + "'";
-            stmt.executeUpdate(add);
-            System.out.println("SUBBook Deleted!!");
+            add = "UPDATE books SET copyDetails = " + "?"
+                    + ", onShelf = " + onShelf
+                    + " WHERE ISBN = '" + ISBN + "'";
+            PreparedStatement statement = con.prepareStatement(add);
+            statement.setObject(1, copyDetails);
+            statement.executeUpdate();
+            //stmt.executeUpdate(add);
+            if (flag == true) {
+                System.out.println("SUBBook Deleted!!");
+            } else {
+                System.out.println("Book Not Deleted!!");
+            }
         } catch (SQLException ex) {
             Logger.getLogger(Librarian.class.getName()).log(Level.SEVERE, null, ex);
         }
