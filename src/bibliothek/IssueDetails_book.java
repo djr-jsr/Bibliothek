@@ -5,16 +5,18 @@
  */
 package bibliothek;
 
+import java.io.Serializable;
+
 
 
 /**
  *
  * @author AKASH
  */
-class IssueDetails_book {
+class IssueDetails_book implements Serializable{
     private int issueMember;
-    String issueDate;
-    String returnDate;
+    private String issueDate;
+    private String returnDate;
 
     public IssueDetails_book(int issueMember, String issueDate) {
         this.issueMember = issueMember;

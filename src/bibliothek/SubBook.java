@@ -5,13 +5,14 @@
  */
 package bibliothek;
 
+import java.io.Serializable;
 import java.util.ArrayList;
 
 /**
  *
  * @author AKASH
  */
-class SubBook {
+class SubBook implements Serializable{
     private int ID;
     private boolean isIssued;
     private ArrayList<IssueDetails_book> issuedMembers;

@@ -15,7 +15,7 @@ import java.util.logging.Logger;
  */
 public class Initialize {
 
-    private static final String url = "jdbc:mysql://10.136.158.28:3306";
+    private static final String url = "jdbc:mysql://10.109.52.217:3306";
     private static final String user = "root";
     private static final String password = "qwerty";
 
@@ -55,7 +55,7 @@ public class Initialize {
                 System.out.println("Created table in given database...");
                 
                 sql = "CREATE TABLE members "
-                        + "(memberType INTEGER, "
+                        + "(memberType VARCHAR(20), "
                         + " ID INTEGER, "
                         + " name VARCHAR(255), "
                         + " phoneNo VARCHAR(20), "
