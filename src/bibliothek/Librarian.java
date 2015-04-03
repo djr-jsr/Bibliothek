@@ -102,8 +102,7 @@ public class Librarian {
                 add = "DELETE from members WHERE ID = " + ID;
                 stmt.executeUpdate(add);
                 System.out.println("Member Deleted!!");
-            }
-            else{
+            } else {
                 System.out.println("Member can't be deleted!!");
             }
         } catch (SQLException ex) {
@@ -187,6 +186,7 @@ public class Librarian {
             ResultSet rs = stmt.executeQuery(add);
             rs.next();
             int onShelf = rs.getInt("onShelf");
+            boolean isReserved = rs.getBoolean("isReserved");
             byte[] buf = rs.getBytes("copyDetails");
             ObjectInputStream o = new ObjectInputStream(new ByteArrayInputStream(buf));
 
@@ -201,6 +201,12 @@ public class Librarian {
             countID = countID + copies;
             onShelf = onShelf + copies;
             rs.close();
+
+            if (isReserved) {
+                LibrarySystem ls = new LibrarySystem();
+                ls.informReservedMembers(ISBN);
+            }
+
             add = "UPDATE books SET countID = " + countID
                     + ", copyDetails = " + "?"
                     + ", onShelf = " + onShelf

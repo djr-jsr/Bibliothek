@@ -42,8 +42,29 @@ public class LibrarySystem {
 
     }
 
-    public void display() {
+    public void informReservedMembers(String ISBN) throws IOException, ClassNotFoundException {
+        try {
+            int flag = 0;
+            Statement stmt = null;
+            Connection con = DriverManager.getConnection(url, user, password);
+            System.out.println("Success");
+            stmt = con.createStatement();
+            String add = "SELECT * FROM books WHERE ISBN = '" + ISBN + "'";
+            ResultSet rs = stmt.executeQuery(add);
+            rs.next();
+            boolean isReserved = rs.getBoolean("isReserved");
+            int onShelf = rs.getInt("onShelf");
+            byte[] buf1 = rs.getBytes("reserveList");
+            ObjectInputStream o1 = new ObjectInputStream(new ByteArrayInputStream(buf1));
+            ArrayList<Integer> reserveList = (ArrayList<Integer>) o1.readObject();
 
+            Iterator itr = reserveList.iterator();
+            while (itr.hasNext() && onShelf > 0) {
+                System.out.println("Book Available for member ID = " + ((Integer) itr.next()));
+            }
+        } catch (SQLException ex) {
+            Logger.getLogger(Librarian.class.getName()).log(Level.SEVERE, null, ex);
+        }
     }
 
     public void penalty() {
@@ -149,7 +170,7 @@ public class LibrarySystem {
                     }
                 }
             }
-            
+
             add = "UPDATE books SET reserveList = " + "?"
                     + ", isReserved = " + isReserved
                     + ", copyDetails = " + "?"
@@ -175,7 +196,96 @@ public class LibrarySystem {
 
     }
 
-    public void returned(String ISBN, int subID, int ID) {
+    public void returned(String ISBN, int subID, int ID) throws IOException, ClassNotFoundException {
+
+        try {
+            int flag = 0;
+            Statement stmt = null;
+            Connection con = DriverManager.getConnection(url, user, password);
+            System.out.println("Success");
+            stmt = con.createStatement();
+            String add = "SELECT * FROM books WHERE ISBN = '" + ISBN + "'";
+            ResultSet rs = stmt.executeQuery(add);
+            rs.next();
+            boolean isReserved = rs.getBoolean("isReserved");
+            int onShelf = rs.getInt("onShelf");
+            byte[] buf = rs.getBytes("copyDetails");
+            ObjectInputStream o = new ObjectInputStream(new ByteArrayInputStream(buf));
+            ArrayList<SubBook> copyDetails = (ArrayList<SubBook>) o.readObject();
+
+            byte[] buf1 = rs.getBytes("reserveList");
+            ObjectInputStream o1 = new ObjectInputStream(new ByteArrayInputStream(buf1));
+            ArrayList<Integer> reserveList = (ArrayList<Integer>) o1.readObject();
+
+            String mem = "SELECT * FROM members WHERE ID = " + ID;
+            ResultSet ms = stmt.executeQuery(mem);
+            ms.next();
+            double fine = ms.getDouble("fine");
+            int bookLimit = ms.getInt("bookLimit");
+            byte[] buf2 = ms.getBytes("booksIssued");
+            ObjectInputStream o2 = new ObjectInputStream(new ByteArrayInputStream(buf2));
+            ArrayList<IssueDetails_member> booksIssued = (ArrayList<IssueDetails_member>) o2.readObject();
+
+            Iterator itr = copyDetails.iterator();
+            while (itr.hasNext()) {
+                SubBook sb = (SubBook) itr.next();
+                if (sb.getID() == subID && sb.isIsIssued()) {
+                    Iterator iter = sb.getIssuedMembers().iterator();
+                    while (iter.hasNext()) {
+                        IssueDetails_book iss = (IssueDetails_book) iter.next();
+                        if (iss.getIssueMember() == ID && iss.getReturnDate().equalsIgnoreCase("")) {
+                            iter.remove();
+                            itr.remove();
+                            sb.setIsIssued(false);
+                            onShelf++;
+                            SimpleDateFormat sdf = new SimpleDateFormat("dd/MM/yyyy");
+                            String date = sdf.format(Calendar.getInstance().getTime());
+                            iss.setReturnDate(date);
+                            sb.getIssuedMembers().add(iss);
+                            copyDetails.add(sb);
+
+                            Iterator itrr = booksIssued.iterator();
+                            while (itrr.hasNext()) {
+                                IssueDetails_member memb = (IssueDetails_member) itrr.next();
+                                if (memb.getIssuedBook().equals(ISBN) && memb.getReturnDate().equalsIgnoreCase("")) {
+                                    itrr.remove();
+                                    memb.setReturnDate(date);
+                                    booksIssued.add(memb);
+                                }
+                            }
+                            break;
+                        }
+                    }
+                }
+            }
+
+            // TODO inform reserved members
+            if (isReserved == true) {
+                informReservedMembers(ISBN);
+            }
+            
+            add = "UPDATE books SET reserveList = " + "?"
+                    + ", isReserved = " + isReserved
+                    + ", copyDetails = " + "?"
+                    + ", onShelf = " + onShelf
+                    + " WHERE ISBN = '" + ISBN + "'";
+            PreparedStatement pstmt = con.prepareStatement(add);
+            pstmt.setObject(1, reserveList);
+            pstmt.setObject(2, copyDetails);
+            pstmt.executeUpdate();
+            //stmt.executeUpdate(add);
+
+            mem = "UPDATE members SET booksIssued = " + "?" + " WHERE ID = " + ID;
+            pstmt = con.prepareStatement(mem);
+            pstmt.setObject(1, booksIssued);
+            pstmt.executeUpdate();
+            //stmt.executeUpdate(mem);
+            System.out.println("Book Returned!!");
+            rs.close();
+            ms.close();
+        } catch (SQLException ex) {
+            Logger.getLogger(Librarian.class.getName()).log(Level.SEVERE, null, ex);
+        }
 
     }
 
